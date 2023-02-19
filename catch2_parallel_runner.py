@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import typing as T
 import os
 import sys
+import enum
+import re
 from time import sleep, time
 
 GREEN = '\033[92m'
@@ -29,7 +31,9 @@ class TestPrinter:
     ok_count = 0
     failing_count = 0
     verbose = False
+    quiet = False
     run_status_idx = 0
+    test_log = None
 
     def print_result(self, test_case: TestCase):
         self.test_counter += 1
@@ -48,30 +52,48 @@ class TestPrinter:
         test_count_print_len = 2*len(str(self.test_count)) + 1
         if status == 0:
             self.ok_count += 1
-            print(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {GREEN}OK{END_COLOR}   {duration:3.3f}s")
-            if self.verbose:
-                print("".join(lines).strip())
+            self.log(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {GREEN}OK{END_COLOR}   {duration:3.3f}s",
+                     condition=not (self.quiet))
+            self.log("".join(lines).strip(), self.verbose)
         else:
             self.failing_count += 1
-            print(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {RED}FAIL{END_COLOR} {duration:3.3f}s")
-            print("".join(lines).strip())
-            print()
+            self.log(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {RED}FAIL{END_COLOR} {duration:3.3f}s",
+                     condition=True)
+            self.log("".join(lines).strip())
+            self.log()
 
     def print_run_status(self, running_tests: T.List[TestCase]):
+        test_count_print = f"{self.test_counter}/{self.test_count}"
+        test_count_print_len = 2*len(str(self.test_count)) + 1
         self.run_status_idx = (self.run_status_idx + 1) % (len(running_tests))
-        print('\x1b[K', end="\r")
-        print(
-            f"{BLUE}Running{END_COLOR} {running_tests[self.run_status_idx].name_and_tag}", end="\r")
+        self.log('\x1b[K', end="\r")
+        self.log(
+            f"{BLUE}Running {test_count_print:{test_count_print_len}}{END_COLOR} {running_tests[self.run_status_idx].name_and_tag}", end="\r")
+
+    def log(self, s: str = '',
+            condition: bool = True,
+            end="\n"):
+        if condition:
+            print(s, end=end)
+        if end == "\n":
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+            s = ansi_escape.sub('', s)
+            self.test_log.write(s + '\n')
 
 
 @click.command()
 @click.argument('test_exe', nargs=1)
 @click.argument('test_filter', default='')
 @click.option('-v', '--verbose', is_flag=True)
+@click.option('-q', '--quiet', is_flag=True)
 @click.option('-j', '--jobs', default=os.cpu_count() - 1)
-def run_tests(test_exe, test_filter, verbose, jobs):
+@click.option('--log', default="testlog.txt")
+def run_tests(test_exe, test_filter, verbose, quiet, jobs, log):
     test_printer = TestPrinter()
     test_printer.verbose = verbose
+    test_printer.quiet = quiet
+    if quiet and verbose:
+        sys.exit('Can not be both quiet and verbose at the same time.')
     max_jobs = jobs
 
     # Get list of tests
@@ -86,12 +108,11 @@ def run_tests(test_exe, test_filter, verbose, jobs):
         test_cases.append(test_case)
         test_printer.max_test_name_length = max(
             test_printer.max_test_name_length, len(test_case.name_and_tag))
+        test_printer.test_log = open(log, 'w')
     test_printer.test_count = len(test_cases)
 
     if len(test_cases) == 0:
         sys.exit(f"No matching test cases for \"{test_filter}\"")
-    else:
-        print(f"Running {len(test_cases)} tests")
     start_time = time()
 
     # Run tests in parallel
@@ -124,19 +145,23 @@ def run_tests(test_exe, test_filter, verbose, jobs):
                 break
 
     # Summary
-    print()
+    test_printer.log('\x1b[K', end="\r")
+    test_printer.log()
     total_time = time() - start_time
-    print(f'Total time: {total_time:.3f}s')
-    print(f"{'OK':5} {test_printer.ok_count}")
-    print(f"{'FAIL':5} {test_printer.failing_count}")
-    print()
+    test_printer.log(f'Total time: {total_time:.3f}s')
+    test_printer.log(f"{'OK':5} {test_printer.ok_count}")
+    test_printer.log(f"{'FAIL':5} {test_printer.failing_count}")
+    test_printer.log()
     if test_printer.failing_count == 0:
-        print(f"{GREEN}All tests ok{END_COLOR}")
+        test_printer.log(f"{GREEN}All tests ok{END_COLOR}")
     else:
-        print(f"{RED}Failing test cases:{END_COLOR}")
+        test_printer.log(f"{RED}Failing test cases:{END_COLOR}")
         for test_case in test_cases:
             if test_case.test_process.poll() != 0:
-                print(f"\"{test_case.name}\" {test_case.tags}")
+                test_printer.log(f"\"{test_case.name}\" {test_case.tags}")
+
+    print()
+    print(f'Full test log written to {os.path.abspath(log)}')
     sys.exit(test_printer.failing_count > 0)
 
 
