@@ -88,6 +88,12 @@ def run_tests(test_exe, test_filter, verbose, jobs):
             test_printer.max_test_name_length, len(test_case.name_and_tag))
     test_printer.test_count = len(test_cases)
 
+    if len(test_cases) == 0:
+        sys.exit(f"No matching test cases for \"{test_filter}\"")
+    else:
+        print(f"Running {len(test_cases)} tests")
+    start_time = time()
+
     # Run tests in parallel
     running_tests = []
     for test_case in test_cases:
@@ -119,8 +125,10 @@ def run_tests(test_exe, test_filter, verbose, jobs):
 
     # Summary
     print()
-    print(f"{'OK':10} {test_printer.ok_count}")
-    print(f"{'FAIL':10} {test_printer.failing_count}")
+    total_time = time() - start_time
+    print(f'Total time: {total_time:.3f}s')
+    print(f"{'OK':5} {test_printer.ok_count}")
+    print(f"{'FAIL':5} {test_printer.failing_count}")
     print()
     if test_printer.failing_count == 0:
         print(f"{GREEN}All tests ok{END_COLOR}")
