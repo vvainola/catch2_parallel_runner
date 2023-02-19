@@ -129,7 +129,7 @@ def run_tests(test_exe, test_filter, verbose, quiet, jobs, log):
                 test_printer.print_run_status(running_tests)
                 sleep(0.2)
         test_case.test_process = subprocess.Popen([test_exe, test_case.name,
-                                                   '--colour-mode=ansi', '--durations=yes', '--order=rand'],
+                                                   '--colour-mode=ansi', '--durations=yes'],
                                                   stdout=subprocess.PIPE,
                                                   stderr=subprocess.STDOUT, text=True)
         running_tests.append(test_case)
