@@ -7,6 +7,7 @@ import os
 import sys
 import enum
 import re
+import copy
 from time import sleep, time
 
 GREEN = '\033[92m'
@@ -87,8 +88,9 @@ class TestPrinter:
 @click.option('-v', '--verbose', is_flag=True)
 @click.option('-q', '--quiet', is_flag=True)
 @click.option('-j', '--jobs', default=os.cpu_count() - 1)
+@click.option('-r', '--repeat', default=1)
 @click.option('--log', default="testlog.txt")
-def run_tests(test_exe, test_filter, verbose, quiet, jobs, log):
+def run_tests(test_exe, test_filter, verbose, quiet, jobs, repeat, log):
     test_printer = TestPrinter()
     test_printer.verbose = verbose
     test_printer.quiet = quiet
@@ -109,6 +111,11 @@ def run_tests(test_exe, test_filter, verbose, quiet, jobs, log):
         test_printer.max_test_name_length = max(
             test_printer.max_test_name_length, len(test_case.name_and_tag))
         test_printer.test_log = open(log, 'w')
+    test_cases_repeat = []
+    for _ in range(repeat):
+        for test_case in test_cases:
+            test_cases_repeat.append(copy.deepcopy(test_case))
+    test_cases = test_cases_repeat
     test_printer.test_count = len(test_cases)
 
     if len(test_cases) == 0:
@@ -136,13 +143,13 @@ def run_tests(test_exe, test_filter, verbose, quiet, jobs, log):
     # Wait for remaining jobs
     while len(running_tests) > 0:
         test_printer.print_run_status(running_tests)
-        sleep(0.2)
         for running_test in running_tests:
             status = running_test.test_process.poll()
             if status != None:
                 test_printer.print_result(running_test)
                 running_tests.remove(running_test)
                 break
+            sleep(0.2)
 
     # Summary
     test_printer.log('\x1b[K', end="\r")
