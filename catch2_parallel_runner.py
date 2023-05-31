@@ -1,17 +1,17 @@
 # MIT License
-# 
+#
 # Copyright (c) 2023 vvainola
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in all
 # copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -63,12 +63,13 @@ class TestPrinter:
 
         status = test_case.test_process.poll()
         # Find line with "===============", previous line has duration
-        lines = test_case.test_process.stdout.readlines()
-        line = len(lines) - 1
+        stdout_lines = test_case.test_process.stdout.readlines()
+        stderr_lines = test_case.test_process.stderr.readlines()
+        line = len(stdout_lines) - 1
         duration = -1
         while duration < 0 and line > 0:
-            if "=====" in lines[line]:
-                duration = float(lines[line - 1].split(" s:")[0])
+            if "=====" in stdout_lines[line]:
+                duration = float(stdout_lines[line - 1].split(" s:")[0])
             line -= 1
 
         test_count_print = f"{self.test_counter}/{self.test_count}"
@@ -76,14 +77,17 @@ class TestPrinter:
         if status == 0:
             self.ok_count += 1
             self.log(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {GREEN}OK{END_COLOR}   {duration:3.3f}s",
-                     condition=not (self.quiet))
-            self.log("".join(lines).strip(), self.verbose)
+                     print_condition=not (self.quiet))
+            self.log("".join(stdout_lines).strip(), self.verbose)
         else:
             self.failing_count += 1
-            self.log(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {RED}FAIL{END_COLOR} {duration:3.3f}s",
-                     condition=True)
-            self.log("".join(lines).strip())
+            self.log(f"{test_count_print:{test_count_print_len}} {test_case.name_and_tag:{self.max_test_name_length}} {RED}FAIL{END_COLOR} {duration:3.3f}s")
+            self.log("".join(stdout_lines).strip())
             self.log()
+        if len(stderr_lines) != 0:
+            # Print stderr by default even for passing cases
+            self.log(f"{BLUE}stderr:{END_COLOR}", print_condition=not self.quiet)
+            self.log("".join(stderr_lines).strip(), print_condition=not self.quiet)
 
     def print_run_status(self, running_tests: T.List[TestCase]):
         test_count_print = f"{self.test_counter}/{self.test_count}"
@@ -94,9 +98,9 @@ class TestPrinter:
             f"{BLUE}Running {test_count_print:{test_count_print_len}}{END_COLOR} {running_tests[self.run_status_idx].name_and_tag}", end="\r")
 
     def log(self, s: str = '',
-            condition: bool = True,
+            print_condition: bool = True,
             end="\n"):
-        if condition:
+        if print_condition:
             print(s, end=end)
         if end == "\n":
             ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -130,9 +134,9 @@ def run_tests(test_exe, test_filter, verbose, quiet, jobs, repeat, log):
                              tags=child.find("Tags").text)
         test_case.name_and_tag = f"\"{test_case.name}\" {test_case.tags}"
         test_cases.append(test_case)
-        test_printer.max_test_name_length = max(
-            test_printer.max_test_name_length, len(test_case.name_and_tag))
+        test_printer.max_test_name_length = max(test_printer.max_test_name_length, len(test_case.name_and_tag))
         test_printer.test_log = open(log, 'w')
+    # Copy test cases for repeat
     test_cases_repeat = []
     for _ in range(repeat):
         for test_case in test_cases:
@@ -160,7 +164,7 @@ def run_tests(test_exe, test_filter, verbose, quiet, jobs, repeat, log):
         test_case.test_process = subprocess.Popen([test_exe, test_case.name,
                                                    '--colour-mode=ansi', '--durations=yes'],
                                                   stdout=subprocess.PIPE,
-                                                  stderr=subprocess.STDOUT, text=True)
+                                                  stderr=subprocess.PIPE, text=True)
         running_tests.append(test_case)
     # Wait for remaining jobs
     while len(running_tests) > 0:
